@@ -1,0 +1,375 @@
+# Default values for genai-observability
+
+# Global settings
+global:
+  clusterDomain: cluster.local
+  environment: production
+
+# OpenTelemetry Collector
+opentelemetry-collector:
+  enabled: true
+  mode: deployment
+  replicaCount: 2
+
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+
+      resourcedetection:
+        detectors: [env, system, gcp, eks, aks, ec2]
+        timeout: 5s
+
+    exporters:
+      otlp/tempo:
+        endpoint: tempo:4317
+        tls:
+          insecure: true
+
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        namespace: genai
+
+      loki:
+        endpoint: http://loki:3100/loki/api/v1/push
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, resourcedetection, batch]
+          exporters: [otlp/tempo]
+
+        metrics:
+          receivers: [otlp]
+          processors: [memory_limiter, resourcedetection, batch]
+          exporters: [prometheus]
+
+        logs:
+          receivers: [otlp]
+          processors: [memory_limiter, resourcedetection, batch]
+          exporters: [loki]
+
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+  service:
+    type: ClusterIP
+    annotations: {}
+
+# Prometheus
+prometheus:
+  enabled: true
+
+  server:
+    replicaCount: 2
+
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: '{{ .Values.global.clusterName }}'
+        environment: '{{ .Values.global.environment }}'
+
+    persistentVolume:
+      enabled: true
+      size: 50Gi
+      storageClass: standard
+
+    retention: 15d
+
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+  alertmanager:
+    enabled: true
+    replicaCount: 2
+
+    persistentVolume:
+      enabled: true
+      size: 10Gi
+
+    config:
+      global:
+        resolve_timeout: 5m
+
+      route:
+        group_by: ['alertname', 'component', 'severity']
+        group_wait: 10s
+        group_interval: 10s
+        repeat_interval: 12h
+        receiver: 'default'
+
+        routes:
+          - match:
+              severity: critical
+              component: genai
+            receiver: 'pagerduty'
+            continue: true
+
+          - match:
+              type: cost
+            receiver: 'slack-finops'
+
+      receivers:
+        - name: 'default'
+          webhook_configs:
+            - url: 'http://webhook-receiver:8080/alerts'
+
+        - name: 'pagerduty'
+          pagerduty_configs:
+            - service_key: '<YOUR_PD_KEY>'
+
+        - name: 'slack-finops'
+          slack_configs:
+            - api_url: '<YOUR_SLACK_WEBHOOK>'
+              channel: '#finops'
+
+  serverFiles:
+    prometheus.yml:
+      rule_files:
+        - /etc/prometheus/rules/*.yaml
+
+      scrape_configs:
+        - job_name: 'genai-metrics'
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+              action: keep
+              regex: true
+            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+              action: replace
+              target_label: __metrics_path__
+              regex: (.+)
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+              action: replace
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: $1:$2
+              target_label: __address__
+
+# Grafana
+grafana:
+  enabled: true
+  replicas: 2
+
+  adminUser: admin
+  adminPassword: changeme
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClassName: standard
+
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          access: proxy
+          url: http://prometheus-server
+          isDefault: true
+
+        - name: Tempo
+          type: tempo
+          access: proxy
+          url: http://tempo:3200
+
+        - name: Loki
+          type: loki
+          access: proxy
+          url: http://loki:3100
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: 'genai'
+          orgId: 1
+          folder: 'GenAI Observability'
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/genai
+
+  dashboardsConfigMaps:
+    genai: "genai-dashboards"
+
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - grafana.example.com
+    tls:
+      - secretName: grafana-tls
+        hosts:
+          - grafana.example.com
+
+# Tempo (Distributed Tracing)
+tempo:
+  enabled: true
+
+  tempo:
+    replicaCount: 2
+
+    storage:
+      trace:
+        backend: s3
+        s3:
+          bucket: genai-traces
+          endpoint: s3.amazonaws.com
+          region: us-east-1
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+    metricsGenerator:
+      enabled: true
+      remoteWriteUrl: http://prometheus-server:9090/api/v1/write
+
+  persistence:
+    enabled: true
+    size: 10Gi
+
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+
+# Loki (Log Aggregation)
+loki:
+  enabled: true
+
+  loki:
+    replicaCount: 2
+
+    config:
+      auth_enabled: false
+
+      ingester:
+        chunk_idle_period: 3m
+        chunk_retain_period: 1m
+        max_chunk_age: 1h
+        lifecycler:
+          ring:
+            kvstore:
+              store: memberlist
+            replication_factor: 2
+
+      storage_config:
+        boltdb_shipper:
+          active_index_directory: /loki/index
+          cache_location: /loki/cache
+          shared_store: s3
+
+        aws:
+          s3: s3://genai-logs/loki
+          region: us-east-1
+
+      limits_config:
+        retention_period: 168h  # 7 days
+        ingestion_rate_mb: 10
+        ingestion_burst_size_mb: 20
+
+    persistence:
+      enabled: true
+      size: 10Gi
+
+    resources:
+      limits:
+        cpu: 500m
+        memory: 1Gi
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+# GenAI Custom Resources
+genai:
+  # Cost tracking
+  cost:
+    budgetLimit: 1000  # Daily budget in USD
+    alertThreshold: 0.8  # Alert at 80% of budget
+
+  # Multi-tenancy
+  multitenancy:
+    enabled: true
+    defaultTenant: "default"
+
+  # PII redaction
+  redaction:
+    enabled: true
+    patterns:
+      - email
+      - ssn
+      - api_key
+      - credit_card
+
+  # Sampling
+  sampling:
+    rate: 0.1  # Sample 10% by default
+    alwaysSample:
+      - error  # Always sample errors
+      - slow   # Always sample slow requests (>5s)
+
+# Network policies
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: genai-apps
+  egress:
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            name: genai-observability
+
+# Service Monitor for Prometheus Operator
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+  labels:
+    prometheus: kube-prometheus

@@ -1,0 +1,66 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'component', 'severity']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 12h
+  receiver: 'default'
+
+  routes:
+    # Critical GenAI alerts
+    - match:
+        severity: critical
+        component: genai
+      receiver: 'critical-alerts'
+      continue: true
+
+    # Cost alerts to separate channel
+    - match:
+        type: cost
+      receiver: 'cost-alerts'
+
+    # Quality/performance warnings
+    - match:
+        severity: warning
+        component: genai
+      receiver: 'genai-warnings'
+
+receivers:
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://localhost:5001/webhook'
+        send_resolved: true
+
+  - name: 'critical-alerts'
+    # Configure PagerDuty, Opsgenie, or similar
+    webhook_configs:
+      - url: 'http://localhost:5001/critical'
+        send_resolved: true
+
+  - name: 'cost-alerts'
+    # Configure Slack, email, or similar for FinOps team
+    webhook_configs:
+      - url: 'http://localhost:5001/cost'
+        send_resolved: true
+
+  - name: 'genai-warnings'
+    webhook_configs:
+      - url: 'http://localhost:5001/warnings'
+        send_resolved: true
+
+inhibit_rules:
+  # Inhibit warning if critical is firing
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'operation']
+
+  # Inhibit individual errors if provider is down
+  - source_match:
+      alertname: 'GenAI_ProviderDown'
+    target_match_re:
+      alertname: 'GenAI_.*Error.*'
+    equal: ['provider']

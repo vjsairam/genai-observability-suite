@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go (for GoReleaser)
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v5
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Release Notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## What's Changed
+
+          ### 📦 Deliverables
+
+          - Python SDK: [genai-otel](https://pypi.org/project/genai-otel/)
+          - Node.js SDK: [@genai-obs/otel](https://www.npmjs.com/package/@genai-obs/otel)
+          - Helm Chart: [genai-observability](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/genai-observability-*.tgz)
+          - Docker Images: [ghcr.io/${{ github.repository }}](https://ghcr.io/${{ github.repository }})
+
+          ### 🔒 Security
+
+          - Container images signed with Cosign
+          - SBOM available: [sbom.spdx.json](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/sbom.spdx.json)
+          - Trivy scan results: See [security artifacts](https://github.com/${{ github.repository }}/security/code-scanning)
+
+          ### 📊 Dashboards Included
+
+          - RAG Overview Dashboard
+          - LLM Backend Performance Dashboard
+          - Cost & Budgets Dashboard
+
+          ### 🚨 Alerting Rules
+
+          - P95 latency alerts
+          - Error rate monitoring
+          - Cost burn rate alerts
+          - Retrieval quality alerts
+
+          ### 📚 Documentation
+
+          - [Quickstart Guide](https://github.com/${{ github.repository }}/blob/main/docs/guides/quickstart.md)
+          - [Integration Guide](https://github.com/${{ github.repository }}/blob/main/docs/guides/integration.md)
+          - [API Documentation](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
+
+          ### ✅ Verification
+
+          Verify image signature:
+          \`\`\`bash
+          cosign verify ghcr.io/${{ github.repository }}:${{ github.ref_name }} \
+            --certificate-identity=https://github.com/${{ github.repository }}/.github/workflows/ci.yaml@refs/tags/${{ github.ref_name }} \
+            --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+          \`\`\`
+
+          Verify SBOM:
+          \`\`\`bash
+          cosign verify-attestation ghcr.io/${{ github.repository }}:${{ github.ref_name }} \
+            --type spdx
+          \`\`\`
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release-notes.md
+          files: |
+            dist/*
+            sbom.spdx.json
+          generate_release_notes: true
+
+      - name: Update Helm repository index
+        run: |
+          helm repo index . --url https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+          gh release upload ${{ github.ref_name }} index.yaml --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

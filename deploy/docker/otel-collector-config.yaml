@@ -1,0 +1,87 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+  # Memory limiter prevents OOM
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+
+  # Resource detection
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 5s
+
+  # Attributes processor for enrichment
+  attributes:
+    actions:
+      - key: deployment.environment
+        action: insert
+        value: ${DEPLOYMENT_ENV:dev}
+
+  # Metrics transform for GenAI specific metrics
+  metricstransform:
+    transforms:
+      - include: gen_ai.*
+        action: update
+        new_name: genai_$1
+
+exporters:
+  # Jaeger for traces
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Tempo for traces (alternative)
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Prometheus for metrics
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: genai
+    const_labels:
+      service: genai-observability
+
+  # Loki for logs
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    tenant_id: "genai"
+
+  # Debug exporter (optional, for troubleshooting)
+  logging:
+    loglevel: info
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, attributes, batch]
+      exporters: [otlp/jaeger, otlp/tempo, logging]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, metricstransform, batch]
+      exporters: [prometheus, logging]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, attributes, batch]
+      exporters: [loki, logging]
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133

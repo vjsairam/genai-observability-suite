@@ -1,0 +1,206 @@
+{
+  "dashboard": {
+    "title": "LLM Backend Performance",
+    "tags": ["genai", "llm", "performance"],
+    "timezone": "browser",
+    "editable": true,
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "type": "timeseries",
+        "title": "Requests by Model",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_requests_total{operation=~\"generate|embed\"}[5m])) by (model)",
+            "legendFormat": "{{model}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}},
+            "unit": "reqps"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "type": "timeseries",
+        "title": "Generation Latency by Provider",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(gen_ai_request_duration_bucket{operation=\"generate\"}[5m])) by (provider, le))",
+            "legendFormat": "{{provider}} p95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(gen_ai_request_duration_bucket{operation=\"generate\"}[5m])) by (provider, le))",
+            "legendFormat": "{{provider}} p50",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2},
+            "unit": "ms"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+        "type": "piechart",
+        "title": "Request Distribution by Provider",
+        "targets": [
+          {
+            "expr": "sum(increase(gen_ai_requests_total{operation=\"generate\"}[1h])) by (provider)",
+            "legendFormat": "{{provider}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right"},
+          "pieType": "donut"
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 8, "w": 16, "x": 8, "y": 8},
+        "type": "timeseries",
+        "title": "Token Throughput (Input vs Output)",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_tokens_total{token_type=\"input\"}[5m])) by (model)",
+            "legendFormat": "{{model}} (input)",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(gen_ai_tokens_total{token_type=\"output\"}[5m])) by (model)",
+            "legendFormat": "{{model}} (output)",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2, "fillOpacity": 0},
+            "unit": "tps"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "type": "heatmap",
+        "title": "Generation Latency Heatmap",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_request_duration_bucket{operation=\"generate\"}[1m])) by (le)",
+            "format": "heatmap",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "calculate": false,
+          "yAxis": {"unit": "ms"}
+        }
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "type": "timeseries",
+        "title": "Tokens per Request",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(gen_ai_tokens_per_request_bucket[5m])) by (le))",
+            "legendFormat": "p95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(gen_ai_tokens_per_request_bucket[5m])) by (le))",
+            "legendFormat": "p50",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2},
+            "unit": "short"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+        "type": "table",
+        "title": "Model Performance Summary",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_requests_total[5m])) by (model, provider)",
+            "format": "table",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(gen_ai_request_duration_bucket[5m])) by (model, provider, le))",
+            "format": "table",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(rate(gen_ai_requests_total{status=\"error\"}[5m])) by (model, provider) / sum(rate(gen_ai_requests_total[5m])) by (model, provider) * 100",
+            "format": "table",
+            "refId": "C"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge",
+            "options": {}
+          },
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {"Time": true},
+              "renameByName": {
+                "model": "Model",
+                "provider": "Provider",
+                "Value #A": "Req/s",
+                "Value #B": "P95 Latency (ms)",
+                "Value #C": "Error Rate (%)"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
+        "type": "timeseries",
+        "title": "Finish Reasons Distribution",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_requests_total{operation=\"generate\"}[5m])) by (finish_reason)",
+            "legendFormat": "{{finish_reason}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "percent"}},
+            "unit": "reqps"
+          }
+        }
+      }
+    ],
+    "refresh": "10s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "time": {"from": "now-1h", "to": "now"},
+    "version": 1
+  }
+}

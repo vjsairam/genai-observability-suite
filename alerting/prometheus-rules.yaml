@@ -1,0 +1,275 @@
+groups:
+  - name: genai_slo_alerts
+    interval: 30s
+    rules:
+      # P95 Latency Breach
+      - alert: GenAI_HighLatency_P95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(gen_ai_request_duration_bucket[5m])) by (operation, le)
+          ) > 5000
+        for: 5m
+        labels:
+          severity: warning
+          component: genai
+          slo: latency
+        annotations:
+          summary: "High P95 latency for {{ $labels.operation }}"
+          description: "P95 latency for {{ $labels.operation }} is {{ $value }}ms, exceeding 5000ms threshold for 5 minutes."
+          runbook_url: "https://docs.example.com/runbooks/genai-high-latency"
+
+      # Critical Latency Breach
+      - alert: GenAI_CriticalLatency_P95
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(gen_ai_request_duration_bucket[5m])) by (operation, le)
+          ) > 10000
+        for: 2m
+        labels:
+          severity: critical
+          component: genai
+          slo: latency
+        annotations:
+          summary: "Critical P95 latency for {{ $labels.operation }}"
+          description: "P95 latency for {{ $labels.operation }} is {{ $value }}ms, exceeding 10000ms critical threshold."
+
+      # Error Rate Burst
+      - alert: GenAI_HighErrorRate
+        expr: |
+          (
+            sum(rate(gen_ai_requests_total{status="error"}[5m])) by (operation)
+            /
+            sum(rate(gen_ai_requests_total[5m])) by (operation)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: genai
+          slo: availability
+        annotations:
+          summary: "High error rate for {{ $labels.operation }}"
+          description: "Error rate for {{ $labels.operation }} is {{ $value | humanizePercentage }}, exceeding 5% threshold."
+          runbook_url: "https://docs.example.com/runbooks/genai-high-errors"
+
+      # Critical Error Rate
+      - alert: GenAI_CriticalErrorRate
+        expr: |
+          (
+            sum(rate(gen_ai_requests_total{status="error"}[5m])) by (operation)
+            /
+            sum(rate(gen_ai_requests_total[5m])) by (operation)
+          ) > 0.10
+        for: 2m
+        labels:
+          severity: critical
+          component: genai
+          slo: availability
+        annotations:
+          summary: "Critical error rate for {{ $labels.operation }}"
+          description: "Error rate for {{ $labels.operation }} is {{ $value | humanizePercentage }}, exceeding 10% critical threshold."
+
+  - name: genai_cost_alerts
+    interval: 60s
+    rules:
+      # Cost Burn Rate Threshold
+      - alert: GenAI_HighCostBurnRate
+        expr: |
+          sum(rate(gen_ai_cost_usd_total[5m]) * 3600) > 50
+        for: 10m
+        labels:
+          severity: warning
+          component: genai
+          type: cost
+        annotations:
+          summary: "High cost burn rate detected"
+          description: "Cost burn rate is ${{ $value | humanize }}/hour, exceeding $50/hour threshold."
+          runbook_url: "https://docs.example.com/runbooks/genai-cost-control"
+
+      # Critical Cost Burn
+      - alert: GenAI_CriticalCostBurnRate
+        expr: |
+          sum(rate(gen_ai_cost_usd_total[5m]) * 3600) > 100
+        for: 5m
+        labels:
+          severity: critical
+          component: genai
+          type: cost
+        annotations:
+          summary: "Critical cost burn rate detected"
+          description: "Cost burn rate is ${{ $value | humanize }}/hour, exceeding $100/hour critical threshold."
+
+      # Daily Budget Projection
+      - alert: GenAI_DailyBudgetProjectionExceeded
+        expr: |
+          sum(rate(gen_ai_cost_usd_total[1h]) * 86400) > 1000
+        for: 15m
+        labels:
+          severity: warning
+          component: genai
+          type: budget
+        annotations:
+          summary: "Projected daily cost exceeds budget"
+          description: "Projected daily cost is ${{ $value | humanize }}, exceeding $1000 budget limit."
+
+      # Per-Model Cost Spike
+      - alert: GenAI_ModelCostSpike
+        expr: |
+          (
+            sum(rate(gen_ai_cost_usd_total[5m])) by (model)
+            /
+            sum(rate(gen_ai_cost_usd_total[5m] offset 1h)) by (model)
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: genai
+          type: cost_anomaly
+        annotations:
+          summary: "Cost spike detected for {{ $labels.model }}"
+          description: "Cost for {{ $labels.model }} increased by {{ $value }}x compared to 1 hour ago."
+
+  - name: genai_retrieval_alerts
+    interval: 30s
+    rules:
+      # Low Hit@K Rate
+      - alert: GenAI_LowRetrievalHitRate
+        expr: |
+          avg(gen_ai_retrieval_hit_at_k) by (source) < 0.7
+        for: 10m
+        labels:
+          severity: warning
+          component: genai
+          type: quality
+        annotations:
+          summary: "Low retrieval hit rate for {{ $labels.source }}"
+          description: "Hit@K rate for {{ $labels.source }} is {{ $value | humanizePercentage }}, below 70% threshold."
+          runbook_url: "https://docs.example.com/runbooks/genai-low-hit-rate"
+
+      # Retrieval Miss Spike
+      - alert: GenAI_RetrievalMissSpike
+        expr: |
+          (
+            sum(rate(gen_ai_retrieval_results_count{results_count="0"}[5m]))
+            /
+            sum(rate(gen_ai_retrieval_results_count[5m]))
+          ) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          component: genai
+          type: quality
+        annotations:
+          summary: "High retrieval miss rate detected"
+          description: "{{ $value | humanizePercentage }} of retrievals returning no results, exceeding 20% threshold."
+
+      # Retrieval Latency Degradation
+      - alert: GenAI_SlowRetrieval
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(gen_ai_request_duration_bucket{operation="retrieve"}[5m])) by (source, le)
+          ) > 500
+        for: 10m
+        labels:
+          severity: warning
+          component: genai
+          type: performance
+        annotations:
+          summary: "Slow retrieval for {{ $labels.source }}"
+          description: "P95 retrieval latency for {{ $labels.source }} is {{ $value }}ms, exceeding 500ms threshold."
+
+  - name: genai_token_alerts
+    interval: 60s
+    rules:
+      # Token Usage Spike
+      - alert: GenAI_TokenUsageSpike
+        expr: |
+          (
+            sum(rate(gen_ai_tokens_total[5m])) by (model)
+            /
+            sum(rate(gen_ai_tokens_total[5m] offset 1h)) by (model)
+          ) > 3
+        for: 10m
+        labels:
+          severity: info
+          component: genai
+          type: usage_anomaly
+        annotations:
+          summary: "Token usage spike for {{ $labels.model }}"
+          description: "Token usage for {{ $labels.model }} increased by {{ $value }}x compared to 1 hour ago."
+
+      # High Token Rate
+      - alert: GenAI_HighTokenRate
+        expr: |
+          sum(rate(gen_ai_tokens_total[5m])) > 100000
+        for: 15m
+        labels:
+          severity: info
+          component: genai
+          type: capacity
+        annotations:
+          summary: "High token throughput detected"
+          description: "Token rate is {{ $value | humanize }} tokens/sec, consider scaling or throttling."
+
+  - name: genai_availability_alerts
+    interval: 30s
+    rules:
+      # Provider Down/Unavailable
+      - alert: GenAI_ProviderDown
+        expr: |
+          sum(rate(gen_ai_requests_total{status="error",error_type=~".*Timeout.*|.*Unavailable.*|.*Connection.*"}[5m])) by (provider)
+          /
+          sum(rate(gen_ai_requests_total[5m])) by (provider)
+          > 0.5
+        for: 3m
+        labels:
+          severity: critical
+          component: genai
+          type: availability
+        annotations:
+          summary: "Provider {{ $labels.provider }} appears down"
+          description: "{{ $value | humanizePercentage }} of requests to {{ $labels.provider }} failing with connectivity errors."
+          runbook_url: "https://docs.example.com/runbooks/genai-provider-down"
+
+      # Rate Limit Exceeded
+      - alert: GenAI_RateLimitExceeded
+        expr: |
+          sum(rate(gen_ai_requests_total{status="error",error_type=~".*RateLimit.*"}[5m])) by (provider, model) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: genai
+          type: throttling
+        annotations:
+          summary: "Rate limit exceeded for {{ $labels.provider }}/{{ $labels.model }}"
+          description: "Receiving rate limit errors from {{ $labels.provider }} for {{ $labels.model }}."
+          runbook_url: "https://docs.example.com/runbooks/genai-rate-limits"
+
+  - name: genai_data_quality_alerts
+    interval: 120s
+    rules:
+      # No Data Received
+      - alert: GenAI_NoDataReceived
+        expr: |
+          absent(gen_ai_requests_total) or
+          sum(rate(gen_ai_requests_total[5m])) == 0
+        for: 10m
+        labels:
+          severity: warning
+          component: genai
+          type: monitoring
+        annotations:
+          summary: "No GenAI telemetry data received"
+          description: "No GenAI metrics received in the last 10 minutes. Check instrumentation and exporters."
+
+      # Metric Staleness
+      - alert: GenAI_MetricsStale
+        expr: |
+          (time() - timestamp(gen_ai_requests_total)) > 300
+        for: 5m
+        labels:
+          severity: warning
+          component: genai
+          type: monitoring
+        annotations:
+          summary: "GenAI metrics are stale"
+          description: "GenAI metrics haven't been updated in over 5 minutes."

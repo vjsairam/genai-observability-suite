@@ -1,0 +1,291 @@
+{
+  "dashboard": {
+    "title": "Cost & Budgets",
+    "tags": ["genai", "cost", "finops"],
+    "timezone": "browser",
+    "editable": true,
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+        "type": "stat",
+        "title": "Total Cost (24h)",
+        "targets": [
+          {
+            "expr": "sum(increase(gen_ai_cost_usd_total[24h]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 100, "color": "yellow"},
+                {"value": 500, "color": "red"}
+              ]
+            },
+            "unit": "currencyUSD",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+        "type": "stat",
+        "title": "Burn Rate ($/hour)",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_cost_usd_total[5m])) * 3600",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 10, "color": "yellow"},
+                {"value": 50, "color": "red"}
+              ]
+            },
+            "unit": "currencyUSD",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+        "type": "stat",
+        "title": "Avg Cost per Request",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_cost_usd_total[5m])) / sum(rate(gen_ai_requests_total[5m]))",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "thresholds"},
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": null, "color": "green"},
+                {"value": 0.01, "color": "yellow"},
+                {"value": 0.05, "color": "red"}
+              ]
+            },
+            "unit": "currencyUSD",
+            "decimals": 4
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "type": "timeseries",
+        "title": "Cost Over Time by Model",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_cost_usd_total[5m]) * 3600) by (model)",
+            "legendFormat": "{{model}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}},
+            "unit": "currencyUSD"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "type": "timeseries",
+        "title": "Cost by Provider",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_cost_usd_total[5m]) * 3600) by (provider)",
+            "legendFormat": "{{provider}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}},
+            "unit": "currencyUSD"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "type": "piechart",
+        "title": "Cost Distribution by Model (24h)",
+        "targets": [
+          {
+            "expr": "topk(10, sum(increase(gen_ai_cost_usd_total[24h])) by (model))",
+            "legendFormat": "{{model}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "legend": {"displayMode": "table", "placement": "right", "values": ["value", "percent"]},
+          "pieType": "donut",
+          "displayLabels": ["percent"]
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "type": "timeseries",
+        "title": "Cost per 1K Tokens by Model",
+        "targets": [
+          {
+            "expr": "(sum(rate(gen_ai_cost_usd_total[5m])) by (model) / sum(rate(gen_ai_tokens_total[5m])) by (model)) * 1000",
+            "legendFormat": "{{model}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2},
+            "unit": "currencyUSD",
+            "decimals": 4
+          }
+        }
+      },
+      {
+        "id": 8,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+        "type": "timeseries",
+        "title": "Cost by Tenant (Multi-tenancy)",
+        "targets": [
+          {
+            "expr": "topk(10, sum(rate(gen_ai_cost_usd_total[5m]) * 3600) by (tenant_id))",
+            "legendFormat": "{{tenant_id}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2, "fillOpacity": 0},
+            "unit": "currencyUSD"
+          }
+        }
+      },
+      {
+        "id": 9,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
+        "type": "table",
+        "title": "Cost Breakdown by Model (Last 24h)",
+        "targets": [
+          {
+            "expr": "sum(increase(gen_ai_cost_usd_total[24h])) by (model, provider)",
+            "format": "table",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(increase(gen_ai_tokens_total[24h])) by (model, provider)",
+            "format": "table",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(increase(gen_ai_requests_total[24h])) by (model, provider)",
+            "format": "table",
+            "refId": "C"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "merge"
+          },
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {"Time": true},
+              "renameByName": {
+                "model": "Model",
+                "provider": "Provider",
+                "Value #A": "Total Cost ($)",
+                "Value #B": "Total Tokens",
+                "Value #C": "Total Requests"
+              }
+            }
+          },
+          {
+            "id": "calculateField",
+            "options": {
+              "alias": "Cost per Request",
+              "mode": "binary",
+              "reduce": {"reducer": "sum"},
+              "binary": {
+                "left": "Total Cost ($)",
+                "operator": "/",
+                "right": "Total Requests"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 40},
+        "type": "timeseries",
+        "title": "Budget Alert: Daily Cost Projection",
+        "targets": [
+          {
+            "expr": "sum(rate(gen_ai_cost_usd_total[1h]) * 86400)",
+            "legendFormat": "Projected Daily Cost",
+            "refId": "A"
+          },
+          {
+            "expr": "vector(1000)",
+            "legendFormat": "Daily Budget Limit",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {"mode": "palette-classic"},
+            "custom": {"lineWidth": 2},
+            "unit": "currencyUSD"
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Daily Budget Limit"},
+              "properties": [
+                {"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}},
+                {"id": "custom.lineStyle", "value": {"dash": [10, 10], "fill": "dash"}}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {"mode": "multi"}
+        }
+      }
+    ],
+    "refresh": "10s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "time": {"from": "now-6h", "to": "now"},
+    "version": 1
+  }
+}
