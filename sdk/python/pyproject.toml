@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "genai-otel"
 version = "0.1.0"
 description = "OpenTelemetry instrumentation for GenAI/LLM/RAG systems"
-authors = [{name = "GenAI Observability Suite"}]
+authors = [{name = "vjsai"}]
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "Apache-2.0"}

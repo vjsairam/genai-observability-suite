@@ -20,7 +20,7 @@
     "tracing",
     "instrumentation"
   ],
-  "author": "GenAI Observability Suite",
+  "author": "vjsai",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

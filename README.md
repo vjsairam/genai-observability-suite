@@ -240,7 +240,6 @@ Built on:
 
 - **Issues**: https://github.com/genai-obs/genai-observability-suite/issues
 - **Discussions**: https://github.com/genai-obs/genai-observability-suite/discussions
-- **Email**: team@genai-obs.dev
 
 ---
 

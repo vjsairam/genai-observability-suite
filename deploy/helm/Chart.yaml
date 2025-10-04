@@ -16,8 +16,7 @@ home: https://github.com/genai-obs/genai-observability-suite
 sources:
   - https://github.com/genai-obs/genai-observability-suite
 maintainers:
-  - name: GenAI Observability Team
-    email: team@example.com
+  - name: vjsai
 dependencies:
   - name: opentelemetry-collector
     version: "0.71.0"
